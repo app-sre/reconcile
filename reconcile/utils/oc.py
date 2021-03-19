@@ -22,6 +22,8 @@ from reconcile.utils.secret_reader import SecretReader
 import reconcile.utils.threaded as threaded
 from openshift.dynamic.exceptions import NotFoundError
 from openshift.dynamic import DynamicClient
+from reconcile.utils.unleash import (get_feature_toggle_strategies,
+                                     get_feature_toggle_state)
 
 urllib3.disable_warnings()
 
@@ -636,29 +638,52 @@ class OCDeprecated:
 class OC(OCDeprecated):
     def __init__(self, server, token, jh=None, settings=None,
                  init_projects=False, init_api_resources=False,
-                 local=False):
-        super().__init__(server, token=token, jh=jh, settings=settings,
-                         init_projects=False, init_api_resources=False,
-                         local=local)
-        if server is not None and len(server) > 0:
-            self.client = self._get_client(server, token)
-            self.api_kind_version = self.get_api_resources()
-        else:
-            init_api_resources = False
-            init_projects = False
+                 local=False, cluster_name=None):
+        enable_toggle = 'openshift-resources-native-client'
+        strategies = get_feature_toggle_strategies(
+            enable_toggle, ['perCluster'])
+        # only use the native client if the toggle is enabled and this server
+        # is listed in the perCluster strategy
+        cluster_in_strategy = False
+        for s in strategies:
+            if cluster_name in s.parameters['cluster_name'].split(','):
+                cluster_in_strategy = True
+                break
+        self.use_native = get_feature_toggle_state(enable_toggle) and \
+            cluster_in_strategy
 
-        self.object_clients = {}
-        self.init_projects = init_projects
-        if self.init_projects:
-            self.projects = \
-                [p['metadata']['name']
-                 for p
-                 in self.get_all('Project.project.openshift.io')['items']]
-        self.init_api_resources = init_api_resources
-        if self.init_api_resources:
-            self.api_resources = self.api_kind_version.keys()
+        if not self.use_native:
+            super().__init__(server, token=token, jh=jh,
+                             settings=settings,
+                             init_projects=init_projects,
+                             init_api_resources=init_api_resources,
+                             local=local)
         else:
-            self.api_resources = None
+            super().__init__(server, token=token, jh=jh,
+                             settings=settings,
+                             init_projects=False,
+                             init_api_resources=False,
+                             local=local)
+
+            if server is not None and len(server) > 0:
+                self.client = self._get_client(server, token)
+                self.api_kind_version = self.get_api_resources()
+            else:
+                init_api_resources = False
+                init_projects = False
+
+            self.object_clients = {}
+            self.init_projects = init_projects
+            if self.init_projects:
+                self.projects = \
+                    [p['metadata']['name']
+                     for p
+                     in self.get_all('Project.project.openshift.io')['items']]
+            self.init_api_resources = init_api_resources
+            if self.init_api_resources:
+                self.api_resources = self.api_kind_version.keys()
+            else:
+                self.api_resources = None
 
     def _get_client(self, server, token):
         opts = dict(
@@ -710,6 +735,9 @@ class OC(OCDeprecated):
         return(kind, group_version)
 
     def get_api_resources(self):
+        if not self.use_native:
+            return super().get_api_resources()
+
         # this returns a prefix:apis map
         api_prefix = self.client.resources.parse_api_groups(
             request_resources=False, update=True)
@@ -747,6 +775,9 @@ class OC(OCDeprecated):
         return kind_groupversion
 
     def get_items(self, kind, **kwargs):
+        if not self.use_native:
+            return super().get_items(kind, **kwargs)
+
         k, group_version = self._parse_kind(kind)
         obj_client = self._get_obj_client(group_version=group_version, kind=k)
 
@@ -792,6 +823,9 @@ class OC(OCDeprecated):
         return items
 
     def get(self, namespace, kind, name=None, allow_not_found=False):
+        if not self.use_native:
+            return super().get(namespace, kind, name, allow_not_found)
+
         k, group_version = self._parse_kind(kind)
         obj_client = self._get_obj_client(group_version=group_version, kind=k)
         try:
@@ -804,6 +838,9 @@ class OC(OCDeprecated):
                 raise StatusCodeError(f"[{self.server}]: {e}")
 
     def get_all(self, kind, all_namespaces=False):
+        if not self.use_native:
+            return super().get_all(kind, all_namespaces)
+
         k, group_version = self._parse_kind(kind)
         obj_client = self._get_obj_client(
             group_version=group_version, kind=k)
@@ -904,7 +941,8 @@ class OC_Map:
                 oc_client = OC(server_url, token, jump_host,
                                settings=self.settings,
                                init_projects=self.init_projects,
-                               init_api_resources=self.init_api_resources)
+                               init_api_resources=self.init_api_resources,
+                               cluster_name=cluster)
                 self.set_oc(cluster, oc_client)
             except StatusCodeError as e:
                 self.set_oc(cluster,
