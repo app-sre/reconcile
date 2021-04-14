@@ -462,7 +462,7 @@ class SaasHerder():
                         + f"{str(e)}")
                     return None, None, None
 
-            oc = OC('server', 'token', local=True)
+            oc = OC(server=None, token=None, local=True)
             try:
                 resources = oc.process(template, consolidated_parameters)
             except StatusCodeError as e:
