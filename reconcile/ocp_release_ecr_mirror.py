@@ -151,7 +151,7 @@ class OcpReleaseEcrMirror:
         # Creating a new, bare, OC client since we don't
         # want to run this against any cluster or via
         # a jump host
-        oc_cli = OC(server='', token='', jh=None, settings=None,
+        oc_cli = OC(server=None, token=None, jh=None, settings=None,
                     init_projects=False, init_api_resources=False)
         oc_cli.release_mirror(from_release=ocp_release,
                               to=dest_ocp_art_dev,
@@ -186,7 +186,7 @@ class OcpReleaseEcrMirror:
 
     def _get_ocp_releases(self):
         ocp_releases = list()
-        clusterimagesets = self.oc_cli.get_all('clusterimageset')
+        clusterimagesets = self.oc_cli.get_all('ClusterImageSet')
         for clusterimageset in clusterimagesets['items']:
             release_image = clusterimageset['spec']['releaseImage']
             # There are images in some ClusterImagesSets not coming
