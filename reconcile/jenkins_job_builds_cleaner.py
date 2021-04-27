@@ -13,11 +13,49 @@ def hours_to_ms(hours):
     return hours * 60 * 60 * 1000
 
 
+def delete_builds(jenkins, builds_todel, dry_run=True):
+    delete_builds_count = len(builds_todel)
+    for idx, build in enumerate(builds_todel, start=1):
+        job_name = build['job_name']
+        build_id = build['build_id']
+        progress_str = f"{idx}/{delete_builds_count}"
+        logging.info(['clean_job_builds', progress_str,
+                     job_name, build['rule_name'],
+                     build['rule_keep_hours'], build_id])
+        if not dry_run:
+            try:
+                jenkins.delete_build(build['job_name'], build['build_id'])
+            except Exception as e:
+                msg = f"failed to delete {job_name}/{build_id}"
+                logging.exception(msg)
+
+
+def find_builds(jenkins, job_names, rules):
+    # Current time in ms
+    time_ms = time.time() * 1000
+
+    builds_found = []
+    for job_name in job_names:
+        builds = None
+        for rule in rules:
+            if rule['name_re'].search(job_name):
+                # Fetch list of builds if we dont have it already
+                if not builds:
+                    builds = jenkins.get_builds(job_name)
+                for build in builds:
+                    build_id = build['id']
+                    if time_ms - rule['keep_ms'] > build['timestamp']:
+                        builds_found.append({
+                            'job_name': job_name,
+                            'rule_name': rule['name'],
+                            'rule_keep_hours': rule['keep_hours'],
+                            'build_id': build['id'],
+                        })
+    return builds_found
+
 def run(dry_run):
     jenkins_instances = queries.get_jenkins_instances()
     settings = queries.get_app_interface_settings()
-
-    time_ms = time.time() * 1000
 
     for instance in jenkins_instances:
         instance_cleanup_rules = instance.get('buildsCleanupRules', [])
@@ -40,37 +78,6 @@ def run(dry_run):
         jenkins = JenkinsApi(token, ssl_verify=False, settings=settings)
         all_job_names = jenkins.get_job_names()
 
-        delete_builds = []
+        builds_todel = find_builds(jenkins, all_job_names, cleanup_rules)
 
-        for job_name in all_job_names:
-            builds = None
-            for rule in cleanup_rules:
-                if rule['name_re'].search(job_name):
-                    # Fetch list of builds if we dont have it already
-                    if not builds:
-                        builds = jenkins.get_builds(job_name)
-                    for build in builds:
-                        build_id = build['id']
-                        if time_ms - rule['keep_ms'] > build['timestamp']:
-                            delete_builds.append({
-                                'job_name': job_name,
-                                'rule_name': rule['name'],
-                                'rule_keep_hours': rule['keep_hours'],
-                                'build_id': build['id'],
-                            })
-
-        delete_builds_count = len(delete_builds)
-        for idx, build in enumerate(delete_builds, start=1):
-            job_name = build['job_name']
-            build_id = build['build_id']
-            progress_str = f"{idx}/{delete_builds_count}"
-            logging.info(['clean_job_builds', progress_str,
-                         instance_name, job_name, build['rule_name'],
-                         build['rule_keep_hours'], build_id])
-            if not dry_run:
-                try:
-                    jenkins.delete_build(build['job_name'], build['build_id'])
-                except Exception as e:
-                    msg = f"[{instance_name}] failed to delete " \
-                          f"{job_name}/{build_id}"
-                    logging.exception(msg)
+        delete_builds(jenkins, builds_todel, dry_run)
