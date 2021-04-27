@@ -43,7 +43,6 @@ def find_builds(jenkins, job_names, rules):
                 if not builds:
                     builds = jenkins.get_builds(job_name)
                 for build in builds:
-                    build_id = build['id']
                     if time_ms - rule['keep_ms'] > build['timestamp']:
                         builds_found.append({
                             'job_name': job_name,
@@ -52,6 +51,7 @@ def find_builds(jenkins, job_names, rules):
                             'build_id': build['id'],
                         })
     return builds_found
+
 
 def run(dry_run):
     jenkins_instances = queries.get_jenkins_instances()
@@ -73,7 +73,6 @@ def run(dry_run):
                 'keep_ms': hours_to_ms(rule['keep_hours'])
             })
 
-        instance_name = instance['name']
         token = instance['token']
         jenkins = JenkinsApi(token, ssl_verify=False, settings=settings)
         all_job_names = jenkins.get_job_names()
