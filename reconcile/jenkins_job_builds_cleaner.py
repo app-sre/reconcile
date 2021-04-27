@@ -72,5 +72,5 @@ def run(dry_run):
                     jenkins.delete_build(build['job_name'], build['build_id'])
                 except Exception as e:
                     msg = f"[{instance_name}] failed to delete " \
-                          f"{job_name}/{build_id}. Error was: {e}"
-                    logging.error(msg)
+                          f"{job_name}/{build_id}"
+                    logging.exception(msg)
