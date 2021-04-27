@@ -59,13 +59,11 @@ def run(dry_run):
                                 'build_id': build['id'],
                             })
 
-        todel_current = 0
-        todel_total = len(delete_builds)
-        for build in delete_builds:
-            todel_current += 1
+        delete_builds_count = len(delete_builds)
+        for idx, build in enumerate(delete_builds, start=1):
             job_name = build['job_name']
             build_id = build['build_id']
-            progress_str = f"{todel_current}/{todel_total}"
+            progress_str = f"{idx}/{delete_builds_count}"
             logging.info(['clean_job_builds', progress_str,
                          instance_name, job_name, build['rule_name'],
                          build['rule_keep_hours'], build_id])
